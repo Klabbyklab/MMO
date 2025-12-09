@@ -1,0 +1,190 @@
+id: basement_moisture
+name: "Basement Moisture / Water Intrusion"
+version: 0.1
+
+description: >
+  Inspection focused on water intrusion, moisture, and mold risk in residential basements.
+
+photo_requirements:
+  min_photos: 6
+  max_photos: 12
+  slots:
+    - id: perimeter_walls_overview
+      label: "Perimeter walls – overview"
+      description: "Wide shots showing each wall of the basement from floor to ceiling."
+      recommended_count: 2
+
+    - id: floor_wall_junctions
+      label: "Floor / wall junctions"
+      description: "Photos along the base of exterior walls, especially corners."
+      recommended_count: 2
+
+    - id: visible_issues_closeups
+      label: "Visible issues – close-ups"
+      description: "Close-ups of cracks, staining, efflorescence, mold, or damaged finishes."
+      recommended_count: 2
+
+    - id: mechanical_and_drainage
+      label: "Mechanical / drainage"
+      description: "Sump pump, floor drains, main water entry, or any known problem area."
+      recommended_count: 1
+
+    - id: ceiling_below_grade
+      label: "Ceiling / subfloor above basement"
+      description: "If accessible, any signs of leaks or staining above the basement."
+      recommended_count: 1
+
+intake_questions:
+  - id: basement_finished
+    label: "Is your basement finished, unfinished, or partially finished?"
+    type: single_choice
+    options:
+      - finished
+      - unfinished
+      - partially_finished
+
+  - id: water_seen_last_12_months
+    label: "Have you seen water on the basement floor in the last 12 months?"
+    type: single_choice
+    options:
+      - never
+      - once_or_twice
+      - multiple_times
+      - currently_present
+
+  - id: visible_mold_now
+    label: "Do you currently see visible mold anywhere in the basement?"
+    type: single_choice
+    options:
+      - no
+      - yes_small_areas
+      - yes_multiple_areas
+      - unsure
+
+  - id: foundation_cracks_known
+    label: "Are you aware of cracks in the foundation walls?"
+    type: single_choice
+    options:
+      - no
+      - hairline_only
+      - multiple_small_cracks
+      - one_or_more_large_cracks
+      - unsure
+
+  - id: sump_pump_present
+    label: "Is there a sump pump or other active drainage system?"
+    type: single_choice
+    options:
+      - no
+      - yes_single_sump
+      - yes_multiple_sumps
+      - other
+
+  - id: dehumidifier_use
+    label: "Do you regularly run a dehumidifier in the basement?"
+    type: single_choice
+    options:
+      - never
+      - occasionally
+      - most_of_the_time
+      - continuously
+
+output_schema:
+  fields:
+    - id: dominant_materials
+      label: "Dominant visible materials"
+      type: list_string
+      description: "List of major materials on walls, floors, and visible structure (e.g., concrete, drywall, wood studs)."
+
+    - id: visible_moisture_level
+      label: "Visible moisture level"
+      type: enum
+      options:
+        - none
+        - staining_only
+        - active_condensation
+        - standing_water
+      description: "Overall classification based on all submitted images."
+
+    - id: visible_mold_assessment
+      label: "Visible mold assessment"
+      type: enum
+      options:
+        - none
+        - suspected_small_patches
+        - multiple_suspected_areas
+        - obvious_mold_growth
+      description: "Assessment of likely mold presence from images."
+
+    - id: foundation_crack_severity
+      label: "Foundation crack severity (visual)"
+      type: enum
+      options:
+        - none_visible
+        - hairline_only
+        - multiple_minor_cracks
+        - one_or_more_significant_cracks
+      description: "Visual-only classification of crack severity."
+
+    - id: water_entry_risk_score
+      label: "Water entry risk (0–1)"
+      type: float
+      description: "Model estimate of basement water entry risk based on images and answers."
+
+    - id: air_quality_concern_score
+      label: "Air quality concern (0–1)"
+      type: float
+      description: "Model estimate of potential air quality concern due to dampness or mold."
+
+    - id: recommended_actions_short
+      label: "Recommended actions (short)"
+      type: string
+      description: "Short list of 2–4 prioritized actions for the homeowner."
+
+    - id: missing_evidence_notes
+      label: "Missing evidence / limitations"
+      type: string
+      description: "What photos or information were missing that would help refine this assessment."
+
+    - id: overall_risk_category
+      label: "Overall basement moisture risk category"
+      type: enum
+      options:
+        - low
+        - moderate
+        - high
+        - urgent_attention
+      description: "Simplified headline risk category."
+
+prompt_template: |-
+  You are MMO, a remote home inspection assistant focusing on basement moisture and water intrusion.
+  You will be given:
+  - The user's intake answers about the basement.
+  - A set of photos taken according to the photo_requirements.
+  Your job is to provide a cautious, conservative assessment for a homeowner, NOT a legal certification.
+
+  1. Carefully examine all images for:
+     - Signs of moisture: staining, efflorescence, dark patches, condensation, sheen on surfaces.
+     - Signs of mold or fungal growth.
+     - Cracks in walls or floors, especially at floor/wall junctions.
+     - Evidence of previous repairs or patching.
+     - Mechanical/drainage details (sump pump, drains, piping).
+
+  2. Combine the visual findings with the intake answers to estimate:
+     - Visible moisture level.
+     - Visible mold assessment.
+     - Approximate foundation crack severity (visual only).
+     - Water entry risk score (0–1).
+     - Air quality concern score (0–1).
+
+  3. Be explicit about limitations:
+     - You are working only from photos and user answers.
+     - You cannot see behind finishes or inside walls.
+     - You are not providing a formal engineering or environmental report.
+
+  4. Output strictly in the JSON format matching output_schema.fields, with keys:
+     dominant_materials, visible_moisture_level, visible_mold_assessment,
+     foundation_crack_severity, water_entry_risk_score, air_quality_concern_score,
+     recommended_actions_short, missing_evidence_notes, overall_risk_category.
+
+  Do NOT include any extra keys, text outside JSON, or disclaimers in the JSON.

@@ -1,0 +1,485 @@
+Below is a modular context doc you can reuse. You can trim sections if a future chat doesn’t need everything, but as-is it’s meant to cover the full vision + current state.
+
+MMO – Material & Moisture Observer
+Project Context & Design Brief
+1. High-level concept
+
+MMO (Material & Moisture Observer) is a local, privacy-first inspection assistant for buildings.
+
+It:
+
+Accepts images + structured intake questions for different inspection types.
+
+Produces standardized, schema-driven JSON outputs.
+
+Logs everything to Google Sheets + Google Drive for:
+
+Human-readable logs
+
+Training data
+
+Later report generation & model evaluation
+
+The long-term goal is a system that can:
+
+Run multiple specialized inspection workflows (basement moisture, exterior façade, etc.).
+
+Be trained iteratively via a “training class” where humans correct model outputs.
+
+Stay model-agnostic (can swap in different vision / VLM backends: Ollama, etc.).
+
+Remain locally controllable, not dependent on commercial cloud APIs.
+
+2. Current tech stack
+
+Backend / Server
+
+Python 3 + FastAPI
+
+Runs via uvicorn app.main:app --reload
+
+Single service responsible for:
+
+HTML forms (mobile-friendly)
+
+Receiving image uploads / URLs
+
+Calling the “MMO model” (currently stubbed)
+
+Sending JSON payloads to a Google Apps Script webhook
+
+Configuration & Inspection Types
+
+inspection_types/ folder (YAML files per inspection type)
+
+basement_moisture.yaml
+
+exterior_street_view.yaml
+
+Each YAML defines:
+
+name, description
+
+photo_requirements (slots & guidance)
+
+intake_questions
+
+output_schema (typed fields for structured JSON)
+
+Data sinks
+
+Google Sheets: main log sheet, tab InspectionLog
+
+Google Drive:
+
+Images folder: stores uploaded inspection images
+
+Training folder: stores 1 JSON file per inspection (raw structured data + metadata)
+
+Model / AI
+
+Currently in stub-only mode:
+
+No real CV / VLM yet.
+
+The “model” uses the YAML output_schema to generate fake but structurally correct JSON.
+
+This lets us:
+
+Design UX & data flows.
+
+Evolve schemas without worrying about model bugs.
+
+Future target: local VLM via Ollama (e.g. llava or similar), no OpenAI.
+
+3. User flows (current + planned)
+3.1 Landing & navigation
+
+Route: / (Home)
+
+Shows an ASCII MMO character with a short animated “initializing” splash:
+
+MMO walks/waves in.
+
+Progress bar fills (~2–3 seconds).
+
+Then reveals main menu:
+
+“Run an inspection” → /inspections
+
+“Enter training class” → /train (placeholder for now)
+
+The aesthetic is deliberately black-and-white, textual, terminal-like, and mobile-friendly.
+
+3.2 Inspection selection
+
+Route: /inspections
+
+Simple menu:
+
+“Basement Moisture / Water Intrusion” → /inspect/basement_moisture
+
+“Exterior – Front / Street View” → /inspect/exterior_street_view
+
+Each option corresponds to a YAML config under inspection_types/.
+
+3.3 Guided inspection intake
+
+Route: /inspect/{inspection_type}
+
+Dynamic form generated from the YAML file:
+
+Reads inspection_types/{inspection_type}.yaml
+
+Shows:
+
+Title & description
+
+Project / location text field
+
+Intake questions based on intake_questions (single_choice / number / text)
+
+Photo guidance list from photo_requirements.slots
+
+Inputs for:
+
+Image file upload (phone / desktop)
+
+Image URL (e.g. GitHub raw, public URLs)
+
+On submit, it POSTs to /upload.
+
+3.4 Upload, “model” call, logging
+
+Route: /upload
+
+For each submission:
+
+Generate a unique inspectionId (UUID).
+
+Collect:
+
+inspectionType
+
+project
+
+image (from file or URL)
+
+intakeAnswers (all form fields starting with q_)
+
+Optional: Save image to local disk under uploaded_images/{inspection_type}/... (best-effort).
+
+Call call_mmo_model(image_path, config):
+
+Currently stub-only:
+
+Use YAML output_schema to fabricate structured_output.
+
+Map that into “legacy” summary fields (materials, damage, confidence, summary, etc.).
+
+Build JSON payload for Apps Script, including:
+
+inspectionId
+
+inspectionType
+
+project
+
+imageName
+
+numImages (currently 1)
+
+Legacy summary fields
+
+rawResult (structured_output from YAML)
+
+intakeAnswers (dict of qid -> answer)
+
+imageBytesB64 (base64 string)
+
+imageMimeType
+
+POST JSON to Google Apps Script webhook (HTTP endpoint).
+
+Show a simple result page:
+
+Inspection type
+
+Project
+
+Summary (one-line)
+
+Note that it’s stub mode (no real AI yet).
+
+Button: “Run another inspection”.
+
+4. Google Sheets & Drive layout
+4.1 Main log sheet – InspectionLog
+
+Suggested columns (current / target):
+
+Timestamp
+
+InspectionId
+
+InspectionType
+
+Project
+
+ImageName
+
+NumImages
+
+Summary (one concise line)
+
+Damage (or headline classification)
+
+Confidence
+
+RawResultJson (stringified rawResult)
+
+IntakeJson (stringified intakeAnswers)
+
+This is the single, canonical source of truth for inspections; row = one inspection.
+
+4.2 Drive folders
+
+Images folder
+
+Each inspection’s image written here by Apps Script from imageBytesB64.
+
+Naming convention could be: {inspectionId}_{imageName}.
+
+Training folder
+
+One JSON per inspection (by Apps Script), e.g. {inspectionId}.json
+
+JSON structure (example):
+
+{
+  "timestamp": "...",
+  "inspectionId": "...",
+  "inspectionType": "...",
+  "project": "...",
+  "imageDriveFileId": "...",
+  "intakeAnswers": { ... },
+  "rawResult": { ... }
+}
+
+
+These JSON files are what a future training / evaluation pipeline will consume.
+
+5. Inspection type design (YAML)
+
+Each inspection type YAML looks broadly like this:
+
+id: basement_moisture
+name: Basement Moisture / Water Intrusion
+description: >
+  Short plain-language description of the inspection’s focus.
+
+photo_requirements:
+  min_photos: 1
+  max_photos: 12
+  slots:
+    - id: perimeter_walls_overview
+      label: Perimeter walls – overview
+      description: Wide shots of each wall from floor to ceiling.
+      recommended_count: 2
+    # ...
+
+intake_questions:
+  - id: basement_finished
+    label: Is your basement finished, unfinished, or partially finished?
+    type: single_choice
+    options: [finished, unfinished, partially_finished]
+  # ...
+
+output_schema:
+  fields:
+    - id: dominant_materials
+      label: Dominant visible materials
+      type: list_string
+      description: >
+        List of major materials on walls, floors, structural elements.
+    - id: visible_moisture_level
+      label: Visible moisture level
+      type: enum
+      options: [none, staining_only, active_condensation, standing_water]
+      description: >
+        Overall visual classification for moisture.
+    # ...
+
+
+Key idea:
+The YAML fully defines:
+
+What the user sees (questions & guidance).
+
+What the model must output (schema).
+
+How Sheets / Training JSON are structured (via output_schema + intake_questions).
+
+Adding a new inspection type is “just” adding a YAML file + maybe some front-end routing.
+
+6. Stub-only mode vs real model
+
+Right now:
+
+call_mmo_model is in stub-only mode:
+
+It never calls a real AI.
+
+It uses output_schema to produce deterministic dummy JSON.
+
+This means:
+
+Responses are instant / predictable.
+
+The schema & UX can be safely iterated.
+
+Eventually (using Ollama or another local VLM):
+
+The model will:
+
+Take the same inputs (images + intake answers).
+
+Be instructed (via prompts) to emit JSON exactly matching output_schema.
+
+The backend code will remain mostly unchanged:
+
+call_mmo_model will swap stub logic for a real vision call.
+
+AIResult + payload + Apps Script layout stay consistent.
+
+The training loop will operate on the JSON files in the Training folder + feedback from the TrainingFeedback sheet (see next section).
+
+7. Training class & feedback loop (planned)
+
+Goal: allow a human to grade model outputs and feed corrections back to the system.
+
+Planned architecture:
+
+Route: /train
+
+Shows “training class” home.
+
+List of recent inspections (e.g. pulled via a JSON index from Apps Script or directly via Sheets API later).
+
+Route: /train/sample/{inspectionId}
+
+Loads the corresponding JSON from the Training folder.
+
+Shows:
+
+Image(s)
+
+Model’s rawResult fields
+
+The intake answers
+
+Provides a grading UI:
+
+For selected key fields (e.g. visible_moisture_level, window_count, roof_type, etc.):
+
+“Correct / Incorrect” toggles
+
+If incorrect, input for corrected value
+
+Apps Script / API endpoint (e.g. doPostTraining) will:
+
+Append row to TrainingFeedback sheet:
+
+inspectionId
+
+fieldName
+
+modelValue
+
+correctValue
+
+isCorrect
+
+notes
+
+timestamp
+
+Optionally update the Training JSON file with a feedback object.
+
+Later, a training pipeline can:
+
+Read all Training JSON + TrainingFeedback rows.
+
+Build datasets for fine-tuning / evaluation of the local VLM.
+
+8. Design principles
+
+Things any future AI collaborator should respect:
+
+Schema first
+
+YAML is the source of truth for:
+
+UX (questions, guidance)
+
+Outputs (structured fields)
+
+All model behavior and logging is shaped around output_schema.
+
+Model-agnostic
+
+Avoid API-specific coupling in core logic.
+
+call_mmo_model should be the only place that knows “how” a model is called.
+
+Local-first, privacy-respecting
+
+Target: run the VLM locally (Ollama) or on a controlled server.
+
+No mandatory dependence on external commercial AI APIs.
+
+One inspection = one JSON = one row
+
+Every inspection has a unique inspectionId.
+
+Sheet row + Training JSON + image(s) are all linked via this ID.
+
+Mobile friendly
+
+All HTML must be usable on a phone:
+
+Single-column layout
+
+Minimal friction to upload a photo and answer questions.
+
+Modular inspection types
+
+It should be easy to:
+
+Add a new inspection type via a new YAML file.
+
+Update questions or fields without rewriting core server code.
+
+9. What I want help with (for future AI sessions)
+
+When I paste this brief into a new chat, I may ask for things like:
+
+Refine / expand YAML schemas for new inspection types.
+
+Design better intake questions for specific inspections.
+
+Improve FastAPI routes (new views, /train workflow, multi-image support).
+
+Design or optimize Apps Script for:
+
+Writing images & JSON to Drive.
+
+Managing InspectionLog and TrainingFeedback.
+
+Draft model prompts and parsing logic for a real local VLM (Ollama) that:
+
+Takes multiple images + intakeAnswers
+
+Emits JSON exactly matching the YAML output_schema.
+
+Propose training / evaluation pipelines from the Training folder + feedback sheet.
